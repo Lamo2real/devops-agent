@@ -1,8 +1,11 @@
 name: deploy
 
 on:
-  # Every push is checked against DEPLOY_GITHUB_BRANCH from project.env below.
+  # Deploy only on push (merge) to the production branch. Pull requests only
+  # test and plan (ci.yml). If you change DEPLOY_GITHUB_BRANCH in project.env,
+  # change this branch too; the job below also checks it.
   push:
+    branches: [main]
     paths-ignore: ["README.md", "docs/**"]
   workflow_dispatch:
 
