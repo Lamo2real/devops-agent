@@ -54,6 +54,14 @@ run "second_environment_shares_bucket" {
   }
 }
 
+run "default_subject_prefix" {
+  command = plan
+  assert {
+    condition     = output.github_oidc_sub_prefix == "repo:acme-ab/devops-agent"
+    error_message = "Default prefix is repo:<owner>/<repo>."
+  }
+}
+
 run "reuses_existing_provider" {
   command = plan
   variables {
@@ -62,6 +70,17 @@ run "reuses_existing_provider" {
   assert {
     condition     = length(aws_iam_openid_connect_provider.github) == 0
     error_message = "Existing provider must be reused."
+  }
+}
+
+run "immutable_subject_prefix" {
+  command = plan
+  variables {
+    github_oidc_sub_prefix = "repo:acme-ab@143636021/devops-agent@1471741576"
+  }
+  assert {
+    condition     = output.github_oidc_sub_prefix == "repo:acme-ab@143636021/devops-agent@1471741576"
+    error_message = "Trust must use the immutable subject prefix."
   }
 }
 

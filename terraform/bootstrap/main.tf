@@ -37,6 +37,10 @@ locals {
   account     = var.aws_account_id
   iam         = "arn:${local.partition}:iam::${local.account}"
   oidc_url    = "https://token.actions.githubusercontent.com"
+  # GitHub sends repo:<owner>/<repo>:... by default, or
+  # repo:<owner>@<id>/<repo>@<id>:... when the repository uses immutable
+  # subject claims. scripts/bootstrap.sh detects the right prefix.
+  sub_prefix = var.github_oidc_sub_prefix != "" ? var.github_oidc_sub_prefix : "repo:${var.github_repository}"
   oidc_arn = (
     var.create_github_oidc_provider
     ? aws_iam_openid_connect_provider.github[0].arn
@@ -260,7 +264,7 @@ data "aws_iam_policy_document" "deploy_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.environment}"]
+      values   = ["${local.sub_prefix}:environment:${var.environment}"]
     }
   }
 }
@@ -448,7 +452,7 @@ data "aws_iam_policy_document" "plan_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:pull_request"]
+      values   = ["${local.sub_prefix}:pull_request"]
     }
   }
 }

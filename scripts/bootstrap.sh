@@ -13,6 +13,20 @@ check_aws_account
 mkdir -p "$BUILD"
 "${CONFIG[@]}" bootstrap --out "$BUILD/bootstrap.tfvars.json"
 
+# The deploy and plan roles must trust the exact "sub" claim GitHub sends.
+# Repositories with immutable subject claims put owner and repo ids in it.
+sub_prefix="$(cfg DEPLOY_GITHUB_OIDC_SUB_PREFIX)"
+if [[ -z "$sub_prefix" ]] && command -v gh >/dev/null 2>&1; then
+  sub_prefix="$(gh api "repos/$(cfg DEPLOY_GITHUB_REPOSITORY)/actions/oidc/customization/sub" \
+    --jq 'if .use_default == false then "CUSTOM" else (.sub_claim_prefix // "") end' 2>/dev/null || true)"
+  [[ "$sub_prefix" == "CUSTOM" ]] && die "the repository uses a custom OIDC sub claim template; set DEPLOY_GITHUB_OIDC_SUB_PREFIX or restore the default template"
+fi
+if [[ -z "$sub_prefix" ]]; then
+  warn "could not ask GitHub for the OIDC subject format (gh missing or not logged in); assuming repo:$(cfg DEPLOY_GITHUB_REPOSITORY)"
+  sub_prefix="repo:$(cfg DEPLOY_GITHUB_REPOSITORY)"
+fi
+log "GitHub OIDC subject prefix: $sub_prefix"
+
 DIR="$ROOT/terraform/bootstrap"
 TF=(terraform -chdir="$DIR")
 OVERRIDE="$DIR/backend_override.tf"   # gitignored (*_override.tf)
@@ -53,7 +67,7 @@ else
 fi
 
 "${TF[@]}" apply -input=false -var-file="$BUILD/bootstrap.tfvars.json" \
-  -var="manage_state_bucket=$manage" ${AUTO_APPROVE:+-auto-approve}
+  -var="manage_state_bucket=$manage" -var="github_oidc_sub_prefix=$sub_prefix" ${AUTO_APPROVE:+-auto-approve}
 
 if [[ ! -f "$OVERRIDE" ]]; then
   log "moving the bootstrap state into s3://$bucket/$key"

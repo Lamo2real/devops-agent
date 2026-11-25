@@ -133,6 +133,8 @@ SCHEMA: list[Var] = [
     Var("DEPLOY_GITHUB_REPOSITORY", default="", pattern=r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", help="owner/repo"),
     Var("DEPLOY_GITHUB_BRANCH", default="main", pattern=r"[A-Za-z0-9._/-]+"),
     Var("CREATE_GITHUB_OIDC_PROVIDER", kind="bool", default="true"),
+    # Optional override; `make bootstrap` detects it with the gh CLI.
+    Var("DEPLOY_GITHUB_OIDC_SUB_PREFIX", default="", pattern=r"repo:[^:\s]+", help="repo:owner/repo or repo:owner@id/repo@id"),
     Var("AGENT_SPACE_DESCRIPTION", default=""),
     Var("OPERATOR_AUTH", default="iam", choices=("iam", "idc")),
     Var("IDC_INSTANCE_ARN", default="", pattern=r"arn:aws:sso:::instance/(sso)?ins-[a-zA-Z0-9-.]{16}"),
@@ -412,6 +414,7 @@ def render_bootstrap_tfvars(cfg: Config) -> dict[str, Any]:
         "github_repository": cfg["DEPLOY_GITHUB_REPOSITORY"],
         "create_github_oidc_provider": cfg["CREATE_GITHUB_OIDC_PROVIDER"],
         "github_token_mode": cfg["GITHUB_MODE"] == "token",
+        "github_oidc_sub_prefix": cfg["DEPLOY_GITHUB_OIDC_SUB_PREFIX"],
         "tags": common_tags(cfg),
     }
 

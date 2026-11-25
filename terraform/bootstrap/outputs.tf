@@ -27,3 +27,8 @@ output "agent_permissions_boundary_arn" {
   description = "Boundary required on the main stack's agent roles."
   value       = aws_iam_policy.agent_boundary.arn
 }
+
+output "github_oidc_sub_prefix" {
+  description = "Subject prefix the deploy and plan roles trust (deploy: <prefix>:environment:<env>, plan: <prefix>:pull_request)."
+  value       = local.sub_prefix
+}

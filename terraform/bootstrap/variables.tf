@@ -42,6 +42,16 @@ variable "github_repository" {
   }
 }
 
+variable "github_oidc_sub_prefix" {
+  type        = string
+  description = "Prefix of the GitHub OIDC sub claim. Empty = repo:<github_repository>. Repositories with immutable subject claims use repo:<owner>@<owner id>/<repo>@<repo id>."
+  default     = ""
+  validation {
+    condition     = var.github_oidc_sub_prefix == "" || can(regex("^repo:[^:\\s]+$", var.github_oidc_sub_prefix))
+    error_message = "github_oidc_sub_prefix must look like repo:owner/repo or repo:owner@123/repo@456."
+  }
+}
+
 variable "create_github_oidc_provider" {
   type        = bool
   description = "Create the GitHub OIDC provider. Set false if the account already has one."
