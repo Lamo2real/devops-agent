@@ -1,5 +1,6 @@
 # Local .terraform directories
 .terraform/
+.terraform-test/
 
 # .tfstate files
 *.tfstate
@@ -42,3 +43,22 @@ terraform.rc
 # Optional: ignore plan files saved before destroying Terraform configuration
 # Uncomment the line below if you want to ignore planout files.
 # planout
+
+# --- Template ---------------------------------------------------------------
+# Build output (Lambda package, rendered tfvars, backend config)
+build/
+terraform/main/.build/
+*.tfplan
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+# Local secrets, never commit
+.env
+*.secret
+# project.env is uploaded to the repository variable PROJECT_ENV by
+# `make github-setup`, so it never lands in a public repository. In a private
+# fork you may commit it instead: remove this line.
+project.env
