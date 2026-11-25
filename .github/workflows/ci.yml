@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (no AWS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: project.env from repository variable
+        if: ${{ hashFiles('project.env') == '' && vars.PROJECT_ENV != '' }}
+        env:
+          PROJECT_ENV: ${{ vars.PROJECT_ENV }}
+        run: printf '%s\n' "$PROJECT_ENV" > project.env
+      - uses: astral-sh/setup-uv@v6
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+          terraform_wrapper: false
+      - name: Validate project.env (when present)
+        run: |
+          if [ -f project.env ]; then python3 scripts/config.py validate; else echo "project.env not created yet, using the example"; fi
+      - name: make test
+        run: make test
+
+  plan:
+    name: Terraform plan (read-only role)
+    needs: test
+    if: ${{ vars.AWS_PLAN_ROLE_ARN != '' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: project.env from repository variable
+        if: ${{ hashFiles('project.env') == '' && vars.PROJECT_ENV != '' }}
+        env:
+          PROJECT_ENV: ${{ vars.PROJECT_ENV }}
+        run: printf '%s\n' "$PROJECT_ENV" > project.env
+      - uses: astral-sh/setup-uv@v6
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+          terraform_wrapper: false
+      - name: Region from project.env
+        id: cfg
+        run: echo "region=$(python3 scripts/config.py get AWS_REGION)" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ steps.cfg.outputs.region }}
+      - name: Plan
+        env:
+          PLAN_ONLY: "1"
+          DEVOPS_AGENT_GITHUB_TOKEN: ${{ secrets.DEVOPS_AGENT_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: make plan

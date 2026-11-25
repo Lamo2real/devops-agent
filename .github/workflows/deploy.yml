@@ -1,0 +1,88 @@
+name: deploy
+
+on:
+  # Deploy only on push (merge) to the production branch. Pull requests only
+  # test and plan (ci.yml). If you change DEPLOY_GITHUB_BRANCH in project.env,
+  # change this branch too; the job below also checks it.
+  push:
+    branches: [main]
+    paths-ignore: ["README.md", "docs/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  config:
+    name: Read project.env
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.cfg.outputs.configured }}
+      environment: ${{ steps.cfg.outputs.environment }}
+      region: ${{ steps.cfg.outputs.region }}
+      branch: ${{ steps.cfg.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: project.env from repository variable
+        if: ${{ hashFiles('project.env') == '' && vars.PROJECT_ENV != '' }}
+        env:
+          PROJECT_ENV: ${{ vars.PROJECT_ENV }}
+        run: printf '%s\n' "$PROJECT_ENV" > project.env
+      - id: cfg
+        run: |
+          if [ ! -f project.env ]; then
+            echo "::notice::no configuration: run make github-setup (uploads project.env as the PROJECT_ENV variable) or commit project.env"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 scripts/config.py validate
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "environment=$(python3 scripts/config.py get ENVIRONMENT)" >> "$GITHUB_OUTPUT"
+          echo "region=$(python3 scripts/config.py get AWS_REGION)" >> "$GITHUB_OUTPUT"
+          echo "branch=$(python3 scripts/config.py get DEPLOY_GITHUB_BRANCH)" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy AWS DevOps Agent
+    needs: config
+    if: ${{ vars.AWS_DEPLOY_ROLE_ARN != '' && needs.config.outputs.configured == 'true' && github.ref_name == needs.config.outputs.branch }}
+    runs-on: ubuntu-latest
+    # The deploy role trusts only repo:<fork>:environment:<ENVIRONMENT>, and
+    # scripts/github_setup.sh limits that environment to DEPLOY_GITHUB_BRANCH.
+    # Add required reviewers on the environment for a manual gate.
+    environment: ${{ needs.config.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: project.env from repository variable
+        if: ${{ hashFiles('project.env') == '' && vars.PROJECT_ENV != '' }}
+        env:
+          PROJECT_ENV: ${{ vars.PROJECT_ENV }}
+        run: printf '%s\n' "$PROJECT_ENV" > project.env
+      - uses: astral-sh/setup-uv@v6
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ needs.config.outputs.region }}
+      - name: Unit and Terraform tests
+        run: make test
+      - name: Deploy
+        env:
+          AUTO_APPROVE: "1"
+          DEVOPS_AGENT_GITHUB_TOKEN: ${{ secrets.DEVOPS_AGENT_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: make deploy
+      - name: Smoke test (alarm -> Lambda -> investigation)
+        # Repository variable RUN_SMOKE_TEST=true. Starts one short investigation
+        # when none from an earlier smoke test is still open.
+        if: ${{ vars.RUN_SMOKE_TEST == 'true' }}
+        run: make smoke-test
